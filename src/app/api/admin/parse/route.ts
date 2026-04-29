@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readManifest } from '@/lib/rma/manifest';
 import { parseAndLoadFile } from '@/lib/rma/parser';
 import { supabase } from '@/lib/db/supabase';
-import { refreshCarrackYieldsViews, type RefreshResult } from '@/lib/db/refreshViews';
+import { refreshCarrackYieldsViews } from '@/lib/db/refreshViews';
+import { setViewRefreshState } from '@/lib/rma/loadStatus';
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,10 +67,24 @@ export async function POST(request: NextRequest) {
     const failed = results.filter((r) => r.status === 'error').length;
 
     // Refresh CarrackYields MVs only if at least one row landed in insurance_offers.
-    // The helper catches its own errors — refresh failure must not fail the parse.
-    let viewRefresh: RefreshResult | null = null;
+    // Runs in a background supervisor (NOT awaited) — the refresh costs ~22s on
+    // current data volumes (most of it the coverage MV) which is too long to
+    // block the parse response on. Mirrors the load endpoint's pattern; both
+    // publish to the same shared ViewRefreshState, which the dashboard polls
+    // via /api/admin/load/status. Helper catches its own errors so a failed
+    // refresh is logged + reflected in the shared state but never throws.
+    let viewRefresh: { status: 'queued' } | null = null;
     if (insuranceOffersUpserted > 0) {
-      viewRefresh = await refreshCarrackYieldsViews(supabase);
+      viewRefresh = { status: 'queued' };
+      void (async () => {
+        setViewRefreshState({ status: 'running', startedAt: new Date().toISOString() });
+        const result = await refreshCarrackYieldsViews(supabase);
+        setViewRefreshState({
+          status: result.success ? 'done' : 'error',
+          completedAt: new Date().toISOString(),
+          result,
+        });
+      })();
     }
 
     return NextResponse.json({
