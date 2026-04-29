@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readManifest } from '@/lib/rma/manifest';
 import { parseAndLoadFile } from '@/lib/rma/parser';
+import { supabase } from '@/lib/db/supabase';
+import { refreshCarrackYieldsViews, type RefreshResult } from '@/lib/db/refreshViews';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +17,9 @@ export async function POST(request: NextRequest) {
 
     const manifest = readManifest();
     const results = [];
+    // Track rows written to insurance_offers across all files in this request.
+    // Used to decide whether the CarrackYields MVs need refreshing afterward.
+    let insuranceOffersUpserted = 0;
 
     for (const key of keys) {
       const entry = manifest.files[key];
@@ -30,6 +35,13 @@ export async function POST(request: NextRequest) {
 
       try {
         const parseResult = await parseAndLoadFile(entry);
+
+        for (const rt of parseResult.recordTypes) {
+          if (rt.table === 'insurance_offers') {
+            insuranceOffersUpserted += rt.rowsUpserted;
+          }
+        }
+
         results.push({
           key,
           status: parseResult.errors.length > 0 ? 'partial' : 'success',
@@ -53,9 +65,17 @@ export async function POST(request: NextRequest) {
     const skipped = results.filter((r) => r.status === 'skipped').length;
     const failed = results.filter((r) => r.status === 'error').length;
 
+    // Refresh CarrackYields MVs only if at least one row landed in insurance_offers.
+    // The helper catches its own errors — refresh failure must not fail the parse.
+    let viewRefresh: RefreshResult | null = null;
+    if (insuranceOffersUpserted > 0) {
+      viewRefresh = await refreshCarrackYieldsViews(supabase);
+    }
+
     return NextResponse.json({
       summary: { total: keys.length, success, partial, skipped, failed },
       results,
+      viewRefresh,
     });
   } catch (err) {
     return NextResponse.json(
