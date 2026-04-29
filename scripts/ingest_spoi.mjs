@@ -24,11 +24,14 @@
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { parseSpoiPath } from './spoi_parse_filename.mjs';
+import { createClient } from '@supabase/supabase-js';
+import { parseSpoiPath, storagePath } from './spoi_parse_filename.mjs';
 
 dotenv.config({ path: '.env.local' });
 
 const DATA_ROOT = path.resolve('data/special_provisions');
+const STORAGE_BUCKET = 'spoi-documents';
+const CATALOG_TABLE = 'spoi_documents';
 
 // ---------------------------------------------------------------
 // CLI args
@@ -149,8 +152,108 @@ async function main() {
     return;
   }
 
-  console.log(`\nLive run is wired in a later commit. Re-run with --dry-run for now.`);
-  process.exit(1);
+  // ---------------------------------------------------------------
+  // Live run — sequential ingest. Concurrency lands in commit 5.
+  // ---------------------------------------------------------------
+
+  const supabase = makeSupabaseClient();
+  console.log(`\nLive run — uploading to bucket "${STORAGE_BUCKET}", upserting into ${CATALOG_TABLE}...`);
+
+  let uploaded = 0;
+  let failed = 0;
+  const failures = [];
+
+  let i = 0;
+  for (const [, w] of winners) {
+    i++;
+    const result = await ingestOne(supabase, w);
+    if (result.ok) {
+      uploaded++;
+    } else {
+      failed++;
+      failures.push({ path: w.absPath, error: result.error });
+    }
+    // Light progress every 100
+    if (i % 100 === 0 || i === winners.size) {
+      const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0);
+      console.log(`  [${i}/${winners.size}] uploaded=${uploaded} failed=${failed} elapsed=${elapsed}s`);
+    }
+  }
+
+  console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s. ingested=${uploaded} failed=${failed}`);
+  if (failures.length > 0) {
+    console.log(`\nFailures (first 20):`);
+    for (const f of failures.slice(0, 20)) {
+      console.log(`  ${f.path}\n    ${f.error}`);
+    }
+    if (failures.length > 20) console.log(`  ... and ${failures.length - 20} more`);
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------
+// Supabase + per-file ingest
+// ---------------------------------------------------------------
+
+function makeSupabaseClient() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) {
+    console.error('SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env.local');
+    process.exit(2);
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+/**
+ * Upload one PDF to Storage and upsert one catalog row.
+ * Returns { ok: true } or { ok: false, error: string }.
+ *
+ * Failures are surfaced per-file but never thrown — the script's job
+ * is to ingest as much as it can and report what didn't make it.
+ *
+ * @param {ReturnType<typeof makeSupabaseClient>} supabase
+ * @param {{parsed: import('./spoi_parse_filename.mjs').ParsedSpoi, absPath: string, sizeBytes: number}} w
+ */
+async function ingestOne(supabase, w) {
+  const dest = storagePath(w.parsed);
+  let body;
+  try {
+    body = fs.readFileSync(w.absPath);
+  } catch (err) {
+    return { ok: false, error: `read failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  // Storage upload — upsert overwrites the slot (latest filing wins).
+  const upload = await supabase.storage.from(STORAGE_BUCKET).upload(dest, body, {
+    contentType: 'application/pdf',
+    upsert: true,
+  });
+  if (upload.error) {
+    return { ok: false, error: `storage: ${upload.error.message}` };
+  }
+
+  // Catalog upsert — natural key keeps one row per tuple.
+  const row = {
+    reinsurance_year:    w.parsed.year,
+    state_code:          w.parsed.state_code,
+    county_code:         w.parsed.county_code,
+    insurance_plan_code: w.parsed.insurance_plan_code,
+    commodity_code:      w.parsed.commodity_code,
+    filing_date:         w.parsed.filing_date,
+    storage_path:        dest,
+    file_size_bytes:     w.sizeBytes,
+    source_filename:     path.basename(w.absPath),
+    ingested_at:         new Date().toISOString(),
+  };
+  const upsert = await supabase
+    .from(CATALOG_TABLE)
+    .upsert(row, { onConflict: 'reinsurance_year,state_code,county_code,insurance_plan_code,commodity_code' });
+  if (upsert.error) {
+    return { ok: false, error: `catalog: ${upsert.error.message}` };
+  }
+
+  return { ok: true };
 }
 
 main().catch((err) => {
