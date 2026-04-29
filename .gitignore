@@ -36,6 +36,15 @@ yarn-error.log*
 # vercel
 .vercel
 
+# RMA data archive (multi-GB USDA RMA files — never commit)
+/data/
+
+# Local-only Claude tooling, worktrees, and saved permissions (machine-local; may contain secrets)
+/.claude/
+
+# Local credential / scratch files (never commit — contains live keys/passwords)
+DatabaseStuff.txt
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
