@@ -12,7 +12,17 @@
 -- one before relying on this function.
 --
 -- Returns a jsonb object with success flag and per-MV durations in ms.
--- Server callers use this via supabase.rpc('refresh_carrackyields_mvs').
+-- Operator usage:
+--   SELECT public.refresh_carrackyields_mvs();
+-- Run this in the Supabase SQL editor after any ingest that wrote new rows
+-- to insurance_offers — otherwise CarrackYields will show stale filter
+-- options and county shading. Takes ~22 seconds at current data volumes
+-- (the coverage MV is the heavy one).
+--
+-- Timeouts: statement_timeout and lock_timeout are pinned to 60s inside
+-- the function body so a stuck refresh can't hang indefinitely or wait
+-- forever on a lock. 60s is comfortably above the observed ~22s steady
+-- state; raise if MV cost grows.
 --
 -- This migration is idempotent (CREATE OR REPLACE + REVOKE/GRANT) — safe
 -- to re-run any time.
@@ -30,6 +40,11 @@ DECLARE
   duration_combinations interval;
   duration_coverage     interval;
 BEGIN
+  -- Cap how long a stuck refresh / lock wait can hang. Function-scoped
+  -- via SET LOCAL — reverts when the function returns.
+  SET LOCAL statement_timeout = '60s';
+  SET LOCAL lock_timeout      = '60s';
+
   start_combinations := clock_timestamp();
   REFRESH MATERIALIZED VIEW CONCURRENTLY public.insurance_offer_combinations;
   duration_combinations := clock_timestamp() - start_combinations;
@@ -46,7 +61,9 @@ BEGIN
 END;
 $$;
 
--- Lock down execution: revoke from PUBLIC, grant only to the server's role.
--- service_role is what the Next.js API routes use via SUPABASE_SERVICE_KEY.
+-- Lock down execution: revoke from PUBLIC, grant to service_role.
+-- Current usage is operator-driven via the SQL editor (which runs as
+-- postgres and bypasses the GRANT entirely). The service_role grant is
+-- defense-in-depth in case a future caller invokes via supabase.rpc().
 REVOKE ALL    ON FUNCTION public.refresh_carrackyields_mvs() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.refresh_carrackyields_mvs() TO service_role;
