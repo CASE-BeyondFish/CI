@@ -7,10 +7,11 @@
  * in public.spoi_documents.
  *
  * Usage:
- *   node scripts/ingest_spoi.mjs                  # all years, real run
- *   node scripts/ingest_spoi.mjs --dry-run        # walk + dedup + summary, no writes
- *   node scripts/ingest_spoi.mjs --year=2026      # restrict to one year
- *   node scripts/ingest_spoi.mjs --year=2026 --dry-run
+ *   node scripts/ingest_spoi.mjs                       # all years, real run, 4 parallel
+ *   node scripts/ingest_spoi.mjs --dry-run             # walk + dedup + summary, no writes
+ *   node scripts/ingest_spoi.mjs --year=2026           # restrict to one year
+ *   node scripts/ingest_spoi.mjs --concurrency=8       # bump parallelism (max 16)
+ *   node scripts/ingest_spoi.mjs --year=2026 --dry-run --concurrency=8
  *
  * Env (loaded from .env.local at the project root):
  *   SUPABASE_URL          required for non-dry-run
@@ -41,9 +42,15 @@ const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const yearArg = args.find((a) => a.startsWith('--year='));
 const yearFilter = yearArg ? Number(yearArg.split('=')[1]) : null;
+const concurrencyArg = args.find((a) => a.startsWith('--concurrency='));
+const concurrency = concurrencyArg ? Number(concurrencyArg.split('=')[1]) : 4;
 
 if (yearArg && (!Number.isInteger(yearFilter) || yearFilter < 1900 || yearFilter > 2100)) {
   console.error(`bad --year value: ${yearArg}`);
+  process.exit(2);
+}
+if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
+  console.error(`bad --concurrency value (1-16): ${concurrencyArg ?? concurrency}`);
   process.exit(2);
 }
 
@@ -153,19 +160,24 @@ async function main() {
   }
 
   // ---------------------------------------------------------------
-  // Live run — sequential ingest. Concurrency lands in commit 5.
+  // Live run — pooled concurrent ingest.
   // ---------------------------------------------------------------
 
   const supabase = makeSupabaseClient();
-  console.log(`\nLive run — uploading to bucket "${STORAGE_BUCKET}", upserting into ${CATALOG_TABLE}...`);
+  console.log(
+    `\nLive run — uploading to bucket "${STORAGE_BUCKET}", upserting into ${CATALOG_TABLE}` +
+    ` (concurrency=${concurrency})...`
+  );
 
+  const items = [...winners.values()];
+  const total = items.length;
   let uploaded = 0;
   let failed = 0;
+  /** @type {{path: string, error: string}[]} */
   const failures = [];
+  let lastLoggedAt = Date.now();
 
-  let i = 0;
-  for (const [, w] of winners) {
-    i++;
+  await runPool(items, concurrency, async (w) => {
     const result = await ingestOne(supabase, w);
     if (result.ok) {
       uploaded++;
@@ -173,12 +185,16 @@ async function main() {
       failed++;
       failures.push({ path: w.absPath, error: result.error });
     }
-    // Light progress every 100
-    if (i % 100 === 0 || i === winners.size) {
-      const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0);
-      console.log(`  [${i}/${winners.size}] uploaded=${uploaded} failed=${failed} elapsed=${elapsed}s`);
+    const done = uploaded + failed;
+    // Log every 100 completions OR every 10s, whichever comes first.
+    const now = Date.now();
+    if (done % 100 === 0 || done === total || now - lastLoggedAt > 10000) {
+      lastLoggedAt = now;
+      const elapsed = ((now - startedAt) / 1000).toFixed(0);
+      const rate = (done / Math.max(1, (now - startedAt) / 1000)).toFixed(1);
+      console.log(`  [${done}/${total}] uploaded=${uploaded} failed=${failed} elapsed=${elapsed}s rate=${rate}/s`);
     }
-  }
+  });
 
   console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s. ingested=${uploaded} failed=${failed}`);
   if (failures.length > 0) {
@@ -189,6 +205,28 @@ async function main() {
     if (failures.length > 20) console.log(`  ... and ${failures.length - 20} more`);
     process.exit(1);
   }
+}
+
+/**
+ * Process `items` with `concurrency` parallel workers. Each worker is
+ * an async loop pulling indices off a shared counter — no extra deps,
+ * no library, just a small Promise.all of N looping coroutines.
+ *
+ * @template T
+ * @param {T[]} items
+ * @param {number} concurrencyN
+ * @param {(item: T, index: number) => Promise<void>} worker
+ */
+async function runPool(items, concurrencyN, worker) {
+  let next = 0;
+  async function loop() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      await worker(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrencyN }, () => loop()));
 }
 
 // ---------------------------------------------------------------
