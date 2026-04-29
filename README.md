@@ -1,5 +1,17 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## CarrackYields materialized view refresh
+
+When you ingest new data into `insurance_offers`, run this in the Supabase SQL editor:
+
+```sql
+SELECT public.refresh_carrackyields_mvs();
+```
+
+Takes ~22 seconds. Otherwise CarrackYields will show stale filter options and stale county shading.
+
+The function definition lives at `supabase/sql/refresh_carrackyields_mvs.sql` — re-apply that migration if the function isn't present in your Supabase project. Refresh is operator-driven on purpose: ingests are rare and intentional, so reactive in-app wiring is over-engineering.
+
 ## Getting Started
 
 First, run the development server:
