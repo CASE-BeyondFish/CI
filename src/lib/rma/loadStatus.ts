@@ -1,8 +1,6 @@
 // Simple in-memory job tracker for background file loading
 // Uses globalThis to survive Next.js dev mode hot reloads
 
-import type { RefreshResult } from '@/lib/db/refreshViews';
-
 export interface LoadJob {
   id: string;
   file: string;
@@ -16,29 +14,9 @@ export interface LoadJob {
   completedAt: string | null;
 }
 
-/**
- * Shared view-refresh state across the whole admin process.
- * After a load batch finishes, if any job touched insurance_offers we
- * trigger a CarrackYields MV refresh — this state lets the dashboard
- * briefly show "Refreshing views..." without us having to attach the
- * substate to each individual LoadJob (the refresh is a single shared
- * event that follows the batch, not a per-job thing).
- */
-export type ViewRefreshState =
-  | { status: 'idle' }
-  | { status: 'running'; startedAt: string }
-  | { status: 'done'; completedAt: string; result: RefreshResult }
-  | { status: 'error'; completedAt: string; result: RefreshResult };
-
-const globalJobs = globalThis as typeof globalThis & {
-  __loadJobs?: Map<string, LoadJob>;
-  __viewRefreshState?: ViewRefreshState;
-};
+const globalJobs = globalThis as typeof globalThis & { __loadJobs?: Map<string, LoadJob> };
 if (!globalJobs.__loadJobs) {
   globalJobs.__loadJobs = new Map<string, LoadJob>();
-}
-if (!globalJobs.__viewRefreshState) {
-  globalJobs.__viewRefreshState = { status: 'idle' };
 }
 const jobs = globalJobs.__loadJobs;
 
@@ -74,12 +52,4 @@ export function updateJob(id: string, updates: Partial<LoadJob>): void {
   if (job) {
     Object.assign(job, updates);
   }
-}
-
-export function getViewRefreshState(): ViewRefreshState {
-  return globalJobs.__viewRefreshState ?? { status: 'idle' };
-}
-
-export function setViewRefreshState(state: ViewRefreshState): void {
-  globalJobs.__viewRefreshState = state;
 }
