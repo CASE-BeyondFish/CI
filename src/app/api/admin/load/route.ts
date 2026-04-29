@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseRawTextFile } from '@/lib/rma/parser';
-import { createJob, updateJob, setViewRefreshState } from '@/lib/rma/loadStatus';
-import { supabase } from '@/lib/db/supabase';
-import { refreshCarrackYieldsViews } from '@/lib/db/refreshViews';
+import { createJob, updateJob } from '@/lib/rma/loadStatus';
 import path from 'path';
 import fs from 'fs';
 
@@ -17,11 +15,6 @@ export async function POST(request: NextRequest) {
     }
 
     const jobIds: string[] = [];
-    // Per-file promises that resolve to how many rows the file wrote into
-    // insurance_offers. We collect them so a supervisor task can wait for the
-    // whole batch before deciding whether to refresh the CarrackYields MVs
-    // (refreshing once mid-batch and once at end would double-hammer the DB).
-    const filePromises: Promise<number>[] = [];
 
     for (const relPath of files) {
       const normalized = path.normalize(relPath).replace(/\\/g, '/');
@@ -32,12 +25,11 @@ export async function POST(request: NextRequest) {
       if (!fullPath.endsWith('.txt') && !fullPath.endsWith('.TXT')) continue;
 
       const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      createJob(jobId, relPath);
+      const job = createJob(jobId, relPath);
       jobIds.push(jobId);
 
-      // Fire and forget — runs in background, doesn't block the response.
-      // Returns the rows-written-to-insurance_offers count for the supervisor.
-      const filePromise: Promise<number> = (async () => {
+      // Fire and forget — runs in background, doesn't block the response
+      (async () => {
         try {
           const result = await parseRawTextFile(fullPath, path.basename(relPath), (processed, upserted) => {
             updateJob(jobId, { rowsProcessed: processed, rowsUpserted: upserted });
@@ -53,14 +45,12 @@ export async function POST(request: NextRequest) {
               errors: result.errors,
               completedAt: new Date().toISOString(),
             });
-            return result.table === 'insurance_offers' ? result.rowsUpserted : 0;
           } else {
             updateJob(jobId, {
               status: 'done',
               errors: ['Unsupported record type'],
               completedAt: new Date().toISOString(),
             });
-            return 0;
           }
         } catch (err) {
           updateJob(jobId, {
@@ -68,33 +58,7 @@ export async function POST(request: NextRequest) {
             errors: [(err as Error).message],
             completedAt: new Date().toISOString(),
           });
-          return 0;
         }
-      })();
-
-      filePromises.push(filePromise);
-    }
-
-    // Supervisor: wait for every file in this batch to settle, then refresh
-    // the CarrackYields MVs once if any file wrote rows to insurance_offers.
-    // This runs in the background after the response has gone out.
-    if (filePromises.length > 0) {
-      void (async () => {
-        const settled = await Promise.allSettled(filePromises);
-        const totalOffersUpserted = settled.reduce(
-          (acc, s) => acc + (s.status === 'fulfilled' ? s.value : 0),
-          0
-        );
-
-        if (totalOffersUpserted <= 0) return;
-
-        setViewRefreshState({ status: 'running', startedAt: new Date().toISOString() });
-        const result = await refreshCarrackYieldsViews(supabase);
-        setViewRefreshState({
-          status: result.success ? 'done' : 'error',
-          completedAt: new Date().toISOString(),
-          result,
-        });
       })();
     }
 
