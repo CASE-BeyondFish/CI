@@ -48,3 +48,6 @@ DatabaseStuff.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase CLI local state (created by `supabase link`)
+/supabase/.temp/
