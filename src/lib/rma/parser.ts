@@ -98,6 +98,18 @@ const RECORD_CONFIGS: Record<string, RecordConfig> = {
     numericColumns: makeNumericSet(['reinsurance_year']),
     conflictColumns: 'organic_practice_code',
   },
+  A00480: {
+    table: 'intervals',
+    columns: ['record_type_code','record_category_code','reinsurance_year','interval_code','interval_name','interval_abbreviation','interval_start_date','interval_end_date','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year']),
+    conflictColumns: 'reinsurance_year,interval_code',
+  },
+  A00530: {
+    table: 'sub_classes',
+    columns: ['record_type_code','record_category_code','reinsurance_year','sub_class_code','sub_class_name','sub_class_abbreviation','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year']),
+    conflictColumns: 'reinsurance_year,sub_class_code',
+  },
   A00070: {
     table: 'subsidy_percents',
     columns: ['record_type_code','record_category_code','reinsurance_year','commodity_code','unit_structure_code','insurance_plan_code','coverage_level_percent','coverage_type_code','deductible_amount','endorsement_length_code','endorsement_length_count','insurance_option_code','range_type_code','range_low_value','range_high_value','subsidy_percent','last_released_date','released_date','deleted_date'],
@@ -310,7 +322,7 @@ export async function parseAndLoadFile(entry: ManifestEntry): Promise<{
   let totalUpserted = 0;
 
   // Process lookup tables first, then core data
-  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00490','A00450','A00500','A00070'];
+  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070'];
   const coreCodes = ['A00030','A00810','A00200','A01010','A01100'];
 
   const orderedEntries = [...zipEntries].sort((a, b) => {
