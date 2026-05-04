@@ -148,6 +148,26 @@ const RECORD_CONFIGS: Record<string, RecordConfig> = {
     numericColumns: makeNumericSet(['reinsurance_year','commodity_year','density_low_quantity','density_high_quantity','transitional_amount','prior_transitional_amount']),
     conflictColumns: 'adm_insurance_offer_id,transitional_amount_code,leaf_year,released_date',
   },
+
+  // Historical Yield Trend bundle
+  A01115: {
+    table: 'historical_yield_trend',
+    columns: ['record_type_code','record_category_code','reinsurance_year','historical_yield_trend_id','yield_year','yield_amount','trended_yield_amount','detrended_yield_amount','area_data_source_id','production_area_id','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year','yield_year','yield_amount','trended_yield_amount','detrended_yield_amount']),
+    conflictColumns: 'reinsurance_year,historical_yield_trend_id,yield_year',
+  },
+  A01120: {
+    table: 'area_data_sources',
+    columns: ['record_type_code','record_category_code','reinsurance_year','area_data_source_id','commodity_code','commodity_type_code','class_code','sub_class_code','intended_use_code','irrigation_practice_code','cropping_practice_code','organic_practice_code','interval_code','area_basis_code','area_source_code','index_value_code','yield_conversion_factor','rate_method_code','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year']),
+    conflictColumns: 'reinsurance_year,area_data_source_id',
+  },
+  A01125: {
+    table: 'production_areas',
+    columns: ['record_type_code','record_category_code','reinsurance_year','production_area_id','state_code','county_code','production_area_state_code','production_area_county_code','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year']),
+    conflictColumns: 'reinsurance_year,production_area_id,state_code,county_code,production_area_state_code,production_area_county_code',
+  },
 };
 
 // Map filename patterns to record type codes
@@ -181,7 +201,8 @@ function parsePipeDelimited(
     // Only add source_file for tables that have the column
     if (config.table === 'insurance_offers' || config.table === 'adm_prices' ||
         config.table === 'adm_dates' || config.table === 'base_rates' ||
-        config.table === 'yields') {
+        config.table === 'yields' || config.table === 'historical_yield_trend' ||
+        config.table === 'area_data_sources' || config.table === 'production_areas') {
       row.source_file = sourceFile;
     }
 
@@ -322,8 +343,8 @@ export async function parseAndLoadFile(entry: ManifestEntry): Promise<{
   let totalUpserted = 0;
 
   // Process lookup tables first, then core data
-  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070'];
-  const coreCodes = ['A00030','A00810','A00200','A01010','A01100'];
+  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070','A01120','A01125'];
+  const coreCodes = ['A00030','A00810','A00200','A01010','A01100','A01115'];
 
   const orderedEntries = [...zipEntries].sort((a, b) => {
     const aCode = detectRecordType(a.entryName) || '';
@@ -469,7 +490,7 @@ export async function parseRawTextFile(filePath: string, sourceLabel: string, on
     const row: Record<string, unknown> = {};
 
     // Add source_file for core data tables
-    if (['insurance_offers','adm_prices','adm_dates','base_rates','yields'].includes(config.table)) {
+    if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','historical_yield_trend','area_data_sources','production_areas'].includes(config.table)) {
       row.source_file = sourceLabel;
     }
 
