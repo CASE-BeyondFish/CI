@@ -1,0 +1,85 @@
+{
+  "_comment": "Catalog of RMA handbook PDFs to mirror to Supabase Storage. Henry curates this by hand. One entry per (document_short, document_version) pair. PDFs must exist on disk at {handbooks_root}/{filename} where handbooks_root defaults to R:\\CarrackReferences\\ (overridable via HANDBOOKS_ROOT env or --root flag).",
+  "handbooks": [
+    {
+      "filename": "Basic-Provisions-26-BR.pdf",
+      "document_short": "CCIP-BP",
+      "document_full": "Common Crop Insurance Policy Basic Provisions",
+      "fcic_number": null,
+      "document_version": "26-BR",
+      "reinsurance_year": 2026,
+      "rma_source_url": "https://www.rma.usda.gov/sites/default/files/2025-11/Basic-Provisions-26-BR.pdf",
+      "notes": "Effective Nov 30, 2025; OBBBA changes integrated"
+    },
+    {
+      "filename": "2026-18010-1-Crop-Insurance-Handbook.pdf",
+      "document_short": "CIH",
+      "document_full": "Crop Insurance Handbook",
+      "fcic_number": "FCIC-18010-1",
+      "document_version": "2026",
+      "reinsurance_year": 2026,
+      "rma_source_url": "https://www.rma.usda.gov/sites/default/files/2025-08/2026-18010-1-Crop-Insurance-Handbook.pdf",
+      "notes": null
+    },
+    {
+      "filename": "2026-18190-General-Standards-Handbook.pdf",
+      "document_short": "GSH",
+      "document_full": "General Standards Handbook",
+      "fcic_number": "FCIC-18190",
+      "document_version": "2026",
+      "reinsurance_year": 2026,
+      "rma_source_url": null,
+      "notes": null
+    },
+    {
+      "filename": "2026-25010-Loss-Adjustment-Manual.pdf",
+      "document_short": "LAM",
+      "document_full": "Loss Adjustment Manual Standards Handbook",
+      "fcic_number": "FCIC-25010",
+      "document_version": "2026",
+      "reinsurance_year": 2026,
+      "rma_source_url": null,
+      "notes": null
+    },
+    {
+      "filename": "Written-Agreement-Handbook-FCIC-24020-01.pdf",
+      "document_short": "WAH",
+      "document_full": "Written Agreement Handbook",
+      "fcic_number": "FCIC-24020-01",
+      "document_version": "2026",
+      "reinsurance_year": 2026,
+      "rma_source_url": null,
+      "notes": null
+    },
+    {
+      "filename": "2026-14080-Program-Performance-Assessment.pdf",
+      "document_short": "PPA",
+      "document_full": "Program Performance Assessment",
+      "fcic_number": "FCIC-14080",
+      "document_version": "2026",
+      "reinsurance_year": 2026,
+      "rma_source_url": null,
+      "notes": null
+    },
+    {
+      "filename": "Small-Grains-Crop-Provisions-23-0011.pdf",
+      "document_short": "SMALL-GRAINS",
+      "document_full": "Small Grains Crop Provisions",
+      "fcic_number": null,
+      "document_version": "23-0011",
+      "reinsurance_year": null,
+      "rma_source_url": null,
+      "notes": null
+    },
+    {
+      "filename": "Coarse-Grains-Crop-Provisions-21-0041.pdf",
+      "document_short": "COARSE-GRAINS",
+      "document_full": "Coarse Grains Crop Provisions",
+      "fcic_number": null,
+      "document_version": "21-0041",
+      "reinsurance_year": null,
+      "rma_source_url": null,
+      "notes": null
+    }
+  ]
+}
