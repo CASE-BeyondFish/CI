@@ -8,6 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import readline from 'readline';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -58,6 +59,8 @@ const RECORD_CONFIGS = {
   A01115: { table: 'historical_yield_trend', columns: ['record_type_code','record_category_code','reinsurance_year','historical_yield_trend_id','yield_year','yield_amount','trended_yield_amount','detrended_yield_amount','area_data_source_id','production_area_id','last_released_date','released_date','deleted_date'], numericColumns: makeNumericSet(['reinsurance_year','yield_year','yield_amount','trended_yield_amount','detrended_yield_amount']), conflictColumns: 'reinsurance_year,historical_yield_trend_id,yield_year', isCore: true },
   A01120: { table: 'area_data_sources', columns: ['record_type_code','record_category_code','reinsurance_year','area_data_source_id','commodity_code','commodity_type_code','class_code','sub_class_code','intended_use_code','irrigation_practice_code','cropping_practice_code','organic_practice_code','interval_code','area_basis_code','area_source_code','index_value_code','yield_conversion_factor','rate_method_code','last_released_date','released_date','deleted_date'], numericColumns: makeNumericSet(['reinsurance_year']), conflictColumns: 'reinsurance_year,area_data_source_id', isCore: true },
   A01125: { table: 'production_areas', columns: ['record_type_code','record_category_code','reinsurance_year','production_area_id','state_code','county_code','production_area_state_code','production_area_county_code','last_released_date','released_date','deleted_date'], numericColumns: makeNumericSet(['reinsurance_year']), conflictColumns: 'reinsurance_year,production_area_id,state_code,county_code,production_area_state_code,production_area_county_code', isCore: true },
+  A01040: { table: 'coverage_level_differential', columns: ['record_type_code','record_category_code','adm_insurance_offer_id','reinsurance_year','commodity_year','commodity_code','insurance_plan_code','state_code','county_code','sub_county_code','type_code','practice_code','insurance_option_code','coverage_level_percent','coverage_type_code','wa_number','wa_land_id','commodity_type_code','class_code','sub_class_code','intended_use_code','irrigation_practice_code','cropping_practice_code','organic_practice_code','interval_code','rate_differential_factor','unit_residual_factor','enterprise_unit_residual_factor','whole_farm_unit_residual_factor','prior_year_rate_differential_factor','prior_year_unit_residual_factor','prior_year_enterprise_unit_residual_factor','prior_year_whole_farm_unit_residual_factor','cat_residual_factor','prior_cat_residual_factor','last_released_date','released_date','deleted_date','filing_date'], numericColumns: makeNumericSet(['reinsurance_year','commodity_year','coverage_level_percent','rate_differential_factor','unit_residual_factor','enterprise_unit_residual_factor','whole_farm_unit_residual_factor','prior_year_rate_differential_factor','prior_year_unit_residual_factor','prior_year_enterprise_unit_residual_factor','prior_year_whole_farm_unit_residual_factor','cat_residual_factor','prior_cat_residual_factor']), conflictColumns: 'adm_insurance_offer_id,coverage_level_percent,coverage_type_code,released_date', isCore: true },
+  A01090: { table: 'unit_discount', columns: ['record_type_code','record_category_code','reinsurance_year','unit_discount_id','coverage_level_percent','area_low_quantity','area_high_quantity','intercept_coefficient','total_unit_size_coefficient','average_county_base_rate_coefficient','type_coefficient','practice_coefficient','commodity_type_coefficient','class_coefficient','sub_class_coefficient','intended_use_coefficient','irrigation_practice_coefficient','cropping_practice_coefficient','organic_practice_coefficient','interval_coefficient','standard_deviation_quantity','optional_unit_discount_factor','basic_unit_discount_factor','enterprise_unit_discount_factor','area_description','last_released_date','released_date','deleted_date'], numericColumns: makeNumericSet(['reinsurance_year','coverage_level_percent','area_low_quantity','area_high_quantity','intercept_coefficient','total_unit_size_coefficient','average_county_base_rate_coefficient','type_coefficient','practice_coefficient','commodity_type_coefficient','class_coefficient','sub_class_coefficient','intended_use_coefficient','irrigation_practice_coefficient','cropping_practice_coefficient','organic_practice_coefficient','interval_coefficient','standard_deviation_quantity','optional_unit_discount_factor','basic_unit_discount_factor','enterprise_unit_discount_factor']), conflictColumns: 'reinsurance_year,unit_discount_id,coverage_level_percent,area_low_quantity,area_high_quantity', isCore: false },
 };
 
 // ============================================================
@@ -102,7 +105,7 @@ const EMPTY_STRING_COLS = new Set([
 function parseRow(values, config, sourceLabel) {
   const row = {};
 
-  if (config.isCore && ['insurance_offers','adm_prices','adm_dates','base_rates','yields','historical_yield_trend','area_data_sources','production_areas'].includes(config.table)) {
+  if (config.isCore && ['insurance_offers','adm_prices','adm_dates','base_rates','yields','historical_yield_trend','area_data_sources','production_areas','coverage_level_differential'].includes(config.table)) {
     row.source_file = sourceLabel;
   }
 
@@ -113,11 +116,11 @@ function parseRow(values, config, sourceLabel) {
     if (col === 'record_type_code' || col === 'record_category_code' ||
         col === 'last_released_date' || col === 'released_date' || col === 'deleted_date') {
       if (col === 'released_date' || col === 'deleted_date') {
-        if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents'].includes(config.table)) {
+        if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents','coverage_level_differential'].includes(config.table)) {
           row[col] = val || null;
         }
       }
-      if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents'].includes(config.table)) {
+      if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents','coverage_level_differential'].includes(config.table)) {
         continue;
       }
       if (col === 'record_type_code' || col === 'record_category_code' || col === 'last_released_date') {
@@ -293,7 +296,14 @@ async function main() {
   console.log(`========================================\n`);
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+// Export parser internals for tests (scripts/test_rma_parser.mjs).
+// Only run main() when invoked as the entry point — `import` from a test
+// must not trigger the loader.
+export { RECORD_CONFIGS, parseRow };
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(err => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}

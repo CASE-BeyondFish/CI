@@ -168,6 +168,20 @@ const RECORD_CONFIGS: Record<string, RecordConfig> = {
     numericColumns: makeNumericSet(['reinsurance_year']),
     conflictColumns: 'reinsurance_year,production_area_id,state_code,county_code,production_area_state_code,production_area_county_code',
   },
+
+  // Rate composition factors — Phase 13 Part A
+  A01040: {
+    table: 'coverage_level_differential',
+    columns: ['record_type_code','record_category_code','adm_insurance_offer_id','reinsurance_year','commodity_year','commodity_code','insurance_plan_code','state_code','county_code','sub_county_code','type_code','practice_code','insurance_option_code','coverage_level_percent','coverage_type_code','wa_number','wa_land_id','commodity_type_code','class_code','sub_class_code','intended_use_code','irrigation_practice_code','cropping_practice_code','organic_practice_code','interval_code','rate_differential_factor','unit_residual_factor','enterprise_unit_residual_factor','whole_farm_unit_residual_factor','prior_year_rate_differential_factor','prior_year_unit_residual_factor','prior_year_enterprise_unit_residual_factor','prior_year_whole_farm_unit_residual_factor','cat_residual_factor','prior_cat_residual_factor','last_released_date','released_date','deleted_date','filing_date'],
+    numericColumns: makeNumericSet(['reinsurance_year','commodity_year','coverage_level_percent','rate_differential_factor','unit_residual_factor','enterprise_unit_residual_factor','whole_farm_unit_residual_factor','prior_year_rate_differential_factor','prior_year_unit_residual_factor','prior_year_enterprise_unit_residual_factor','prior_year_whole_farm_unit_residual_factor','cat_residual_factor','prior_cat_residual_factor']),
+    conflictColumns: 'adm_insurance_offer_id,coverage_level_percent,coverage_type_code,released_date',
+  },
+  A01090: {
+    table: 'unit_discount',
+    columns: ['record_type_code','record_category_code','reinsurance_year','unit_discount_id','coverage_level_percent','area_low_quantity','area_high_quantity','intercept_coefficient','total_unit_size_coefficient','average_county_base_rate_coefficient','type_coefficient','practice_coefficient','commodity_type_coefficient','class_coefficient','sub_class_coefficient','intended_use_coefficient','irrigation_practice_coefficient','cropping_practice_coefficient','organic_practice_coefficient','interval_coefficient','standard_deviation_quantity','optional_unit_discount_factor','basic_unit_discount_factor','enterprise_unit_discount_factor','area_description','last_released_date','released_date','deleted_date'],
+    numericColumns: makeNumericSet(['reinsurance_year','coverage_level_percent','area_low_quantity','area_high_quantity','intercept_coefficient','total_unit_size_coefficient','average_county_base_rate_coefficient','type_coefficient','practice_coefficient','commodity_type_coefficient','class_coefficient','sub_class_coefficient','intended_use_coefficient','irrigation_practice_coefficient','cropping_practice_coefficient','organic_practice_coefficient','interval_coefficient','standard_deviation_quantity','optional_unit_discount_factor','basic_unit_discount_factor','enterprise_unit_discount_factor']),
+    conflictColumns: 'reinsurance_year,unit_discount_id,coverage_level_percent,area_low_quantity,area_high_quantity',
+  },
 };
 
 // Map filename patterns to record type codes
@@ -202,7 +216,8 @@ function parsePipeDelimited(
     if (config.table === 'insurance_offers' || config.table === 'adm_prices' ||
         config.table === 'adm_dates' || config.table === 'base_rates' ||
         config.table === 'yields' || config.table === 'historical_yield_trend' ||
-        config.table === 'area_data_sources' || config.table === 'production_areas') {
+        config.table === 'area_data_sources' || config.table === 'production_areas' ||
+        config.table === 'coverage_level_differential') {
       row.source_file = sourceFile;
     }
 
@@ -218,12 +233,12 @@ function parsePipeDelimited(
         if (col === 'released_date' || col === 'deleted_date') {
           if (config.table === 'insurance_offers' || config.table === 'adm_prices' ||
               config.table === 'adm_dates' || config.table === 'base_rates' ||
-              config.table === 'yields') {
+              config.table === 'yields' || config.table === 'coverage_level_differential') {
             row[col] = val || null;
           }
         }
         // Skip these columns for lookup tables
-        if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents'].includes(config.table)) {
+        if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents','coverage_level_differential'].includes(config.table)) {
           continue;
         }
         if (col === 'record_type_code' || col === 'record_category_code' ||
@@ -342,9 +357,11 @@ export async function parseAndLoadFile(entry: ManifestEntry): Promise<{
   let totalProcessed = 0;
   let totalUpserted = 0;
 
-  // Process lookup tables first, then core data
-  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070','A01120','A01125'];
-  const coreCodes = ['A00030','A00810','A00200','A01010','A01100','A01115'];
+  // Process lookup tables first, then core data. A01090 (unit_discount) is
+  // a lookup that insurance_offers.unit_discount_id references — load before
+  // core. A01040 (coverage_level_differential) is core data, sized like adm_prices.
+  const lookupCodes = ['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070','A01090','A01120','A01125'];
+  const coreCodes = ['A00030','A00810','A00200','A01010','A01040','A01100','A01115'];
 
   const orderedEntries = [...zipEntries].sort((a, b) => {
     const aCode = detectRecordType(a.entryName) || '';
@@ -490,7 +507,7 @@ export async function parseRawTextFile(filePath: string, sourceLabel: string, on
     const row: Record<string, unknown> = {};
 
     // Add source_file for core data tables
-    if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','historical_yield_trend','area_data_sources','production_areas'].includes(config.table)) {
+    if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','historical_yield_trend','area_data_sources','production_areas','coverage_level_differential'].includes(config.table)) {
       row.source_file = sourceLabel;
     }
 
@@ -502,11 +519,11 @@ export async function parseRawTextFile(filePath: string, sourceLabel: string, on
       if (col === 'record_type_code' || col === 'record_category_code' ||
           col === 'last_released_date' || col === 'released_date' || col === 'deleted_date') {
         if (col === 'released_date' || col === 'deleted_date') {
-          if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents'].includes(config.table)) {
+          if (['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents','coverage_level_differential'].includes(config.table)) {
             row[col] = val || null;
           }
         }
-        if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents'].includes(config.table)) {
+        if (!['insurance_offers','adm_prices','adm_dates','base_rates','yields','subsidy_percents','coverage_level_differential'].includes(config.table)) {
           continue;
         }
         if (col === 'record_type_code' || col === 'record_category_code' || col === 'last_released_date') {

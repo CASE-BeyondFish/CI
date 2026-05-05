@@ -345,7 +345,7 @@ export default function AdminDashboard() {
   }
 
   // Supported record types for highlighting
-  const SUPPORTED_TYPES = new Set(['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070','A00030','A00810','A00200','A01010','A01100','A01115','A01120','A01125']);
+  const SUPPORTED_TYPES = new Set(['A00520','A00440','A00420','A00460','A00510','A00540','A00410','A00430','A00470','A00480','A00490','A00450','A00500','A00530','A00070','A00030','A00810','A00200','A01010','A01040','A01090','A01100','A01115','A01120','A01125']);
 
   // Check if a remote file is already downloaded
   const downloadedFilenames = new Set(files.map((f) => f.filename));
