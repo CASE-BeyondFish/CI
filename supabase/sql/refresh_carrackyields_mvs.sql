@@ -11,6 +11,17 @@
 -- concurrently" on either, that MV is missing its unique index — add
 -- one before relying on this function.
 --
+-- Phase 13 (Rate Composition tab): the Phase 13A brief asked for new MVs
+-- backing public.coverage_level_differential and public.unit_discount.
+-- Skipped on purpose — coverage_level_differential is ~17.9M rows and a
+-- passthrough MV exhausted Supabase's pgsql_tmp space during initial
+-- materialization, and the JOIN-style unit_discount MV would have been
+-- ~10M rows for similarly little gain. Both source tables already carry
+-- the geography lookup index Part B's query shape needs (see the
+-- coverage_level_differential.sql / unit_discount.sql migrations), so
+-- Part B queries the source tables directly with the same query latency
+-- and zero refresh overhead.
+--
 -- Returns a jsonb object with success flag and per-MV durations in ms.
 -- Operator usage:
 --   SELECT public.refresh_carrackyields_mvs();
