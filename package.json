@@ -6,7 +6,8 @@
     "dev": "set NODE_OPTIONS=--max-old-space-size=8192&& next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node scripts/test_spoi_parse_filename.mjs && node scripts/test_rma_parser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.102.1",
