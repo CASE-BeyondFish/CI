@@ -72,7 +72,7 @@ async function upsertBatch(rows, attempt = 1) {
     // these when concurrent upserts try to lock the same index keys in
     // different orders — they're benign at this layer (the upsert is
     // idempotent), so back off and retry.
-    const transient = /deadlock|could not serialize|connection|timeout|canceling statement|fetch failed/i.test(error.message);
+    const transient = /deadlock|could not serialize|connection|timeout|canceling statement|fetch failed|bad gateway|502|503|504|gateway timeout|service unavailable|<html|cloudflare/i.test(error.message);
     if (transient && attempt <= 8) {
       const backoff = 1000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 500);
       await new Promise((r) => setTimeout(r, backoff));
